@@ -1,5 +1,7 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, downloadMediaMessage } = require('@whiskeysockets/baileys');
 const { Sticker } = require('wa-sticker-formatter');
+const ytdl = require('@distube/ytdl-core');
+const yts = require('yt-search');
 const pino = require('pino');
 const http = require('http');
 
@@ -17,14 +19,15 @@ server.listen(PORT, () => {
 // 📌 LISTA DE COMANDOS DE TEXTO
 const commands = {
     '!endmath': '🚀 *EndMath* - Treine sua velocidade em matemática!\n\nAcesse a plataforma oficial: https://endmath.base44.app\nDesenvolvido pela *Equipy PvpEnd*!',
-    '!piqui': '🤖 *piqui* - Inteligência artificial e ferramentas inteligentes:\nhttps://endia.edgeone.app',
+    '!endia': '🤖 *EndIA* - Inteligência artificial e ferramentas inteligentes:\nhttps://endia.edgeone.app',
     '!conectatb': '🌐 *ConectaTB* - Portal e utilidades da comunidade:\nhttps://conectatb.base44.app',
     '!criador': '👨‍💻 Este bot foi desenvolvido por *CalzinnOfc* (Equipy PvpEnd)!',
     '!ping': 'Pong! 🏓 O bot está 100% online e respondendo na hora!',
     '!ajuda': '🤖 *Menu de Comandos:*\n\n' +
              '🔹 *Projetos:* !endmath, !endia, !conectatb\n' +
-             '🔹 *Utilitários & Diversão:* !ping, !regras, !piada, !dado, !cafe\n' +
-             '🖼️ *Figurinha:* Envie uma foto com a legenda *!s* (ou responda a uma foto com *!s*) para virar figurinha!',
+             '🔹 *Música:* *!play [nome ou link]* (Ex: !play fita isolante)\n' +
+             '🔹 *Figurinha:* Envie foto com legenda *!s*\n' +
+             '🔹 *Utilitários:* !ping, !regras, !piada, !dado, !cafe',
     '!regras': '📜 *Regras do Grupo:*\n1. Respeite todos os membros.\n2. Proibido spam.\n3. Divirta-se!',
     '!bot': '🤖 Estou rodando 24h na nuvem do Render, totalmente de graça!',
     '!piada': 'Por que o programador faliu? Porque ele usou todo o seu cache! 😂',
@@ -54,7 +57,7 @@ async function connectToWhatsApp() {
             } catch (err) {
                 console.error('Erro ao gerar código:', err);
             }
-        }, 4000);
+        }, 6000);
     }
 
     sock.ev.on('connection.update', (update) => {
@@ -72,7 +75,7 @@ async function connectToWhatsApp() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    // Sistema de mensagens (Comandos + Criador de Figurinha !s)
+    // Sistema de mensagens (Comandos, Figurinha !s e Player de Música !play)
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const m = messages[0];
         if (!m.message || m.key.fromMe) return;
@@ -80,19 +83,23 @@ async function connectToWhatsApp() {
         const sender = m.key.remoteJid;
         const messageType = Object.keys(m.message)[0];
 
-        // Identifica se é uma imagem direta com legenda "!s" ou texto respondendo a uma imagem com "!s"
         const isImage = messageType === 'imageMessage';
         const isExtendedText = messageType === 'extendedTextMessage';
+        const isConversation = messageType === 'conversation';
         
-        let caption = isImage ? m.message.imageMessage.caption : (isExtendedText ? m.message.extendedTextMessage.text : '');
-        caption = caption ? caption.trim().toLowerCase() : '';
+        let textBody = '';
+        if (isConversation) textBody = m.message.conversation;
+        else if (isExtendedText) textBody = m.message.extendedTextMessage.text;
+        else if (isImage) textBody = m.message.imageMessage.caption;
 
-        // Se o comando for !s (Figurinha)
-        if (caption === '!s') {
+        if (!textBody) return;
+        const cleanText = textBody.trim();
+        const lowerText = cleanText.toLowerCase();
+
+        // 1. COMANDO DE FIGURINHA (!s)
+        if (lowerText === '!s') {
             try {
                 let targetMessage = m;
-
-                // Se mandou "!s" respondendo a uma foto enviada anteriormente
                 if (isExtendedText && m.message.extendedTextMessage.contextInfo?.quotedMessage?.imageMessage) {
                     targetMessage = {
                         message: {
@@ -100,13 +107,11 @@ async function connectToWhatsApp() {
                         }
                     };
                 } else if (!isImage) {
-                    return; // Se não for imagem nem resposta a imagem com !s, ignora
+                    return;
                 }
 
-                console.log('Criando figurinha...');
                 await sock.sendMessage(sender, { text: '⏳ Gerando figurinha...' }, { quoted: m });
-
-                // Baixa a imagem enviada
+                
                 const mediaBuffer = await downloadMediaMessage(
                     targetMessage,
                     'buffer',
@@ -114,32 +119,80 @@ async function connectToWhatsApp() {
                     { logger: pino({ level: 'silent' }) }
                 );
 
-                // Converte para WebP (Sticker)
                 const sticker = new Sticker(mediaBuffer, {
-                    pack: 'PvpEndRobot',
+                    pack: 'Equipy PvpEnd Bot',
                     author: 'CalzinnOfc',
-                    type: 'full', // 'full' ou 'crop'
+                    type: 'full',
                     categories: ['🤩'],
                     quality: 50
                 });
 
                 const stickerBuffer = await sticker.toBuffer();
                 await sock.sendMessage(sender, { sticker: stickerBuffer }, { quoted: m });
-                console.log('Figurinha enviada com sucesso!');
-
             } catch (error) {
                 console.error('Erro ao criar figurinha:', error);
-                await sock.sendMessage(sender, { text: '❌ Erro ao criar a figurinha. Envie a foto com a legenda !s novamente!' }, { quoted: m });
+                await sock.sendMessage(sender, { text: '❌ Erro ao criar a figurinha. Tente novamente!' }, { quoted: m });
             }
             return;
         }
 
-        // Processa comandos normais de texto
-        if (commands[caption]) {
-            await sock.sendMessage(sender, { text: commands[caption] }, { quoted: m });
+        // 2. COMANDO DE MÚSICA (!play)
+        if (lowerText.startsWith('!play ')) {
+            const query = cleanText.slice(6).trim();
+            if (!query) {
+                await sock.sendMessage(sender, { text: '❌ Digite o nome ou link de um vídeo do YouTube após o !play.\nExemplo: `!play musica lofi`' }, { quoted: m });
+                return;
+            }
+
+            try {
+                await sock.sendMessage(sender, { text: `🔍 Buscando por: *${query}*...` }, { quoted: m });
+
+                let videoUrl = query;
+                let videoDetails;
+
+                // Se não for um link direto do YouTube, pesquisa pelo nome usando yt-search
+                if (!ytdl.validateURL(query)) {
+                    const searchResult = await yts(query);
+                    if (!searchResult || searchResult.videos.length === 0) {
+                        await sock.sendMessage(sender, { text: '❌ Nenhum vídeo encontrado com esse nome.' }, { quoted: m });
+                        return;
+                    }
+                    videoDetails = searchResult.videos[0];
+                    videoUrl = videoDetails.url;
+                } else {
+                    videoDetails = await yts({ videoId: ytdl.getURLVideoID(query) });
+                }
+
+                await sock.sendMessage(sender, { 
+                    text: `🎵 *Música Encontrada!*\n\n*Título:* ${videoDetails.title}\n*Duração:* ${videoDetails.timestamp}\n*Canal:* ${videoDetails.author.name}\n\n⏳ Baixando áudio...` 
+                }, { quoted: m });
+
+                // Baixa o fluxo de áudio do YouTube
+                const audioStream = ytdl(videoUrl, {
+                    quality: 'highestaudio',
+                    filter: 'audioonly'
+                });
+
+                // Envia o áudio como arquivo de música/voz para ouvir no WhatsApp
+                await sock.sendMessage(sender, { 
+                    audio: audioStream, 
+                    mimetype: 'audio/mp4',
+                    ptt: false // false = envia como arquivo de áudio/música tocável
+                }, { quoted: m });
+
+            } catch (error) {
+                console.error('Erro no comando !play:', error);
+                await sock.sendMessage(sender, { text: '❌ Ocorreu um erro ao baixar o áudio deste vídeo. Tente outro termo ou link.' }, { quoted: m });
+            }
+            return;
+        }
+
+        // 3. COMANDOS NORMAIS DE TEXTO
+        if (commands[lowerText]) {
+            await sock.sendMessage(sender, { text: commands[lowerText] }, { quoted: m });
         }
     });
 }
 
 connectToWhatsApp();
-               
+            
