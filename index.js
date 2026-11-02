@@ -2,21 +2,64 @@ const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers
 const { Sticker } = require('wa-sticker-formatter');
 const ytdl = require('@distube/ytdl-core');
 const yts = require('yt-search');
+const QRCode = require('qrcode');
 const pino = require('pino');
 const http = require('http');
 
-// Servidor HTTP para manter o Render acordado
+// Variáveis globais para exibir no painel web
+let qrCodeImage = '';
+let pairingCodeText = 'A gerar...';
+let botStatus = '🔄 A iniciar bot e a ligar ao WhatsApp...';
+
+// 🌐 PAINEL WEB NA PORTA DO RENDER
 const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot do WhatsApp ativo e rodando!\n');
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(`
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <meta http-equiv="refresh" content="5">
+            <title>Painel do Bot - Equipy PvpEnd</title>
+            <style>
+                body { font-family: Arial, sans-serif; background: #0f172a; color: #fff; text-align: center; padding: 15px; margin: 0; }
+                .card { background: #1e293b; max-width: 400px; margin: 20px auto; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.4); }
+                h1 { color: #38bdf8; font-size: 20px; margin-top: 0; }
+                .status { font-size: 15px; margin: 15px 0; padding: 10px; background: #334155; border-radius: 8px; }
+                .code { font-size: 26px; font-weight: bold; letter-spacing: 3px; color: #4ade80; background: #09090b; padding: 12px; border-radius: 8px; margin: 15px 0; word-break: break-all; }
+                img { background: #fff; padding: 8px; border-radius: 8px; max-width: 220px; margin: 15px 0; }
+                p { color: #94a3b8; font-size: 13px; line-height: 1.4; }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <h1>🤖 WhatsApp Bot</h1>
+                <div class="status">${botStatus}</div>
+                
+                ${qrCodeImage ? `
+                    <p>📸 Aponte a câmara do WhatsApp para este QR Code:</p>
+                    <img src="${qrCodeImage}" alt="QR Code WhatsApp">
+                ` : ''}
+
+                ${pairingCodeText && pairingCodeText !== 'A gerar...' ? `
+                    <p>🔢 Ou use o Código de Emparelhamento:</p>
+                    <div class="code">${pairingCodeText}</div>
+                ` : `<p>${pairingCodeText}</p>`}
+                
+                <p>🔄 Esta página atualiza automaticamente a cada 5 segundos.</p>
+            </div>
+        </body>
+        </html>
+    `);
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`Servidor HTTP ouvindo na porta ${PORT}`);
+    console.log(`Painel web ativo na porta ${PORT}`);
 });
 
-// 📌 LISTA DE COMANDOS DE TEXTO
+// 📌 COMANDOS DE TEXTO
 const commands = {
     '!endmath': '🚀 *EndMath* - Treine sua velocidade em matemática!\n\nAcesse a plataforma oficial: https://endmath.base44.app\nDesenvolvido pela *Equipy PvpEnd*!',
     '!endia': '🤖 *EndIA* - Inteligência artificial e ferramentas inteligentes:\nhttps://endia.edgeone.app',
@@ -43,36 +86,43 @@ async function connectToWhatsApp() {
     });
 
     sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect } = update;
+        const { connection, lastDisconnect, qr } = update;
+
+        if (qr) {
+            QRCode.toDataURL(qr, (err, url) => {
+                if (!err) qrCodeImage = url;
+            });
+            botStatus = '⚠️ Aguardando leitura do QR Code / Código';
+        }
 
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('Conexão fechada. A reconectar...', shouldReconnect);
+            botStatus = '⚠️ Ligação fechada. A reconectar...';
             if (shouldReconnect) {
                 setTimeout(connectToWhatsApp, 5000);
             }
         } else if (connection === 'open') {
+            botStatus = '✅ Bot Conectado com Sucesso!';
+            qrCodeImage = '';
+            pairingCodeText = 'Conectado com sucesso!';
             console.log('Bot conectado com sucesso ao WhatsApp!');
         }
     });
 
     sock.ev.on('creds.update', saveCreds);
 
-    // Solicita o código de emparelhamento de forma limpa, sem loops
     if (!sock.authState.creds.registered) {
         const phoneNumber = "5544999295520";
-        
         setTimeout(async () => {
             try {
-                console.log('A solicitar código de emparelhamento ao WhatsApp...');
+                pairingCodeText = 'A solicitar código...';
                 const code = await sock.requestPairingCode(phoneNumber);
-                console.log(`\n========================================`);
+                pairingCodeText = code;
                 console.log(`CÓDIGO DE EMPARELHAMENTO: ${code}`);
-                console.log(`========================================\n`);
             } catch (err) {
-                console.error('Erro ao gerar código:', err.message);
+                pairingCodeText = 'Erro ao gerar (a tentar novamente...)';
             }
-        }, 12000); // Aguarda 12 segundos exactos para a socket abrir em paz
+        }, 8000);
     }
 
     // GESTÃO DE MENSAGENS (COMANDOS, FIGURINHAS E MÚSICA)
@@ -155,4 +205,4 @@ async function connectToWhatsApp() {
 }
 
 connectToWhatsApp();
-    
+                
