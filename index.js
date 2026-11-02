@@ -48,16 +48,18 @@ async function connectToWhatsApp() {
     if (!sock.authState.creds.registered) {
         const phoneNumber = "5544999295520"; 
         
+        // Espera 30 segundos para garantir que a ligação com o WhatsApp abriu com total estabilidade
         setTimeout(async () => {
             try {
+                console.log('A solicitar código de emparelhamento...');
                 const code = await sock.requestPairingCode(phoneNumber);
                 console.log(`\n========================================`);
                 console.log(`CÓDIGO DE EMPARELHAMENTO: ${code}`);
                 console.log(`========================================\n`);
             } catch (err) {
-                console.error('Erro ao gerar código:', err);
+                console.error('Erro ao gerar código de emparelhamento:', err.message);
             }
-        }, 6000);
+        }, 30000); // 30 segundos exatos
     }
 
     sock.ev.on('connection.update', (update) => {
@@ -140,7 +142,7 @@ async function connectToWhatsApp() {
         if (lowerText.startsWith('!play ')) {
             const query = cleanText.slice(6).trim();
             if (!query) {
-                await sock.sendMessage(sender, { text: '❌ Digite o nome ou link de um vídeo do YouTube após o !play.\nExemplo: `!play musica lofi`' }, { quoted: m });
+                await sock.sendMessage(sender, { text: '❌ Digite o nome ou link de um vídeo após o !play.\nExemplo: `!play musica lofi`' }, { quoted: m });
                 return;
             }
 
@@ -150,7 +152,6 @@ async function connectToWhatsApp() {
                 let videoUrl = query;
                 let videoDetails;
 
-                // Se não for um link direto do YouTube, pesquisa pelo nome usando yt-search
                 if (!ytdl.validateURL(query)) {
                     const searchResult = await yts(query);
                     if (!searchResult || searchResult.videos.length === 0) {
@@ -167,22 +168,20 @@ async function connectToWhatsApp() {
                     text: `🎵 *Música Encontrada!*\n\n*Título:* ${videoDetails.title}\n*Duração:* ${videoDetails.timestamp}\n*Canal:* ${videoDetails.author.name}\n\n⏳ Baixando áudio...` 
                 }, { quoted: m });
 
-                // Baixa o fluxo de áudio do YouTube
                 const audioStream = ytdl(videoUrl, {
                     quality: 'highestaudio',
                     filter: 'audioonly'
                 });
 
-                // Envia o áudio como arquivo de música/voz para ouvir no WhatsApp
                 await sock.sendMessage(sender, { 
                     audio: audioStream, 
                     mimetype: 'audio/mp4',
-                    ptt: false // false = envia como arquivo de áudio/música tocável
+                    ptt: false 
                 }, { quoted: m });
 
             } catch (error) {
                 console.error('Erro no comando !play:', error);
-                await sock.sendMessage(sender, { text: '❌ Ocorreu um erro ao baixar o áudio deste vídeo. Tente outro termo ou link.' }, { quoted: m });
+                await sock.sendMessage(sender, { text: '❌ Ocorreu um erro ao baixar o áudio deste vídeo.' }, { quoted: m });
             }
             return;
         }
