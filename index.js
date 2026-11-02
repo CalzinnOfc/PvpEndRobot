@@ -58,10 +58,11 @@ async function connectToWhatsApp() {
 
     sock.ev.on('creds.update', saveCreds);
 
+    // Sistema inteligente com tentativas automáticas para o código de emparelhamento
     if (!sock.authState.creds.registered) {
         const phoneNumber = "5544999295520";
         
-        setTimeout(async () => {
+        const tentarPedirCodigo = async () => {
             try {
                 console.log('A solicitar código de emparelhamento ao WhatsApp...');
                 const code = await sock.requestPairingCode(phoneNumber);
@@ -69,9 +70,13 @@ async function connectToWhatsApp() {
                 console.log(`CÓDIGO DE EMPARELHAMENTO: ${code}`);
                 console.log(`========================================\n`);
             } catch (err) {
-                console.error('Erro ao gerar código:', err.message);
+                console.log('⚠️ Ligação ainda a estabilizar. Nova tentativa em 4 segundos...');
+                setTimeout(tentarPedirCodigo, 4000); // Tenta de novo automaticamente se falhar
             }
-        }, 5000);
+        };
+
+        // Aguarda 8 segundos iniciais e começa as tentativas automáticas
+        setTimeout(tentarPedirCodigo, 8000);
     }
 
     // GESTÃO DE MENSAGENS (COMANDOS, FIGURINHAS E MÚSICA)
@@ -154,4 +159,3 @@ async function connectToWhatsApp() {
 }
 
 connectToWhatsApp();
-            
