@@ -49,7 +49,7 @@ async function connectToWhatsApp() {
             const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
             console.log('Conexão fechada. A reconectar...', shouldReconnect);
             if (shouldReconnect) {
-                setTimeout(connectToWhatsApp, 3000);
+                setTimeout(connectToWhatsApp, 5000);
             }
         } else if (connection === 'open') {
             console.log('Bot conectado com sucesso ao WhatsApp!');
@@ -58,11 +58,11 @@ async function connectToWhatsApp() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    // Sistema inteligente com tentativas automáticas para o código de emparelhamento
+    // Solicita o código de emparelhamento de forma limpa, sem loops
     if (!sock.authState.creds.registered) {
         const phoneNumber = "5544999295520";
         
-        const tentarPedirCodigo = async () => {
+        setTimeout(async () => {
             try {
                 console.log('A solicitar código de emparelhamento ao WhatsApp...');
                 const code = await sock.requestPairingCode(phoneNumber);
@@ -70,13 +70,9 @@ async function connectToWhatsApp() {
                 console.log(`CÓDIGO DE EMPARELHAMENTO: ${code}`);
                 console.log(`========================================\n`);
             } catch (err) {
-                console.log('⚠️ Ligação ainda a estabilizar. Nova tentativa em 4 segundos...');
-                setTimeout(tentarPedirCodigo, 4000); // Tenta de novo automaticamente se falhar
+                console.error('Erro ao gerar código:', err.message);
             }
-        };
-
-        // Aguarda 8 segundos iniciais e começa as tentativas automáticas
-        setTimeout(tentarPedirCodigo, 8000);
+        }, 12000); // Aguarda 12 segundos exactos para a socket abrir em paz
     }
 
     // GESTÃO DE MENSAGENS (COMANDOS, FIGURINHAS E MÚSICA)
@@ -159,3 +155,4 @@ async function connectToWhatsApp() {
 }
 
 connectToWhatsApp();
+    
